@@ -1,0 +1,6 @@
+error_rate_before: "0.2%"
+error_rate_peak: "8.7%"
+error_rate_after: "0.3%"
+p99_latency_peak_ms: 4100
+affected_requests_estimate: 1450
+incident_duration_minutes: 19

@@ -1,0 +1,25 @@
+[project]
+name = "rca-generator"
+version = "0.1.0"
+description = "Generate a structured incident postmortem (RCA) from alerts, a Slack thread export, logs, and a metrics summary."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "pyyaml>=6.0",
+    "click>=8.1",
+]
+
+[project.scripts]
+rca-generator = "rca_generator.cli:main"
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+dev = ["pytest>=7.0", "ruff>=0.4"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

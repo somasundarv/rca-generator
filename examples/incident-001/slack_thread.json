@@ -1,0 +1,9 @@
+{
+  "messages": [
+    {"timestamp": "2026-03-04T09:13:00Z", "user": "@oncall-bot", "text": "Paging payments-team: CheckoutHighErrorRate firing on checkout-service."},
+    {"timestamp": "2026-03-04T09:15:00Z", "user": "@priya", "text": "Acking. Checking recent deploys."},
+    {"timestamp": "2026-03-04T09:19:00Z", "user": "@priya", "text": "Deploy at 09:05 dropped the payment-provider timeout to 200ms, way too aggressive. Rolling back."},
+    {"timestamp": "2026-03-04T09:27:00Z", "user": "@priya", "text": "Rollback deployed. Error rate dropping."},
+    {"timestamp": "2026-03-04T09:31:00Z", "user": "@oncall-bot", "text": "CheckoutHighErrorRate resolved on checkout-service."}
+  ]
+}
