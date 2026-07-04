@@ -26,7 +26,7 @@ from .timeline import merge_timeline
     default=None,
     help="Write postmortem markdown to this file instead of stdout.",
 )
-@click.option("--model", default="claude-sonnet-4-6", help="Anthropic model to use when ANTHROPIC_API_KEY is set.")
+@click.option("--model", default="claude-sonnet-5", help="Anthropic model to use when ANTHROPIC_API_KEY is set.")
 def main(incident_dir: str, incident_name: str | None, output_path: str | None, model: str) -> None:
     """Generate a structured RCA/postmortem from incident alerts, a Slack export, logs, and metrics."""
     incident_path = Path(incident_dir)

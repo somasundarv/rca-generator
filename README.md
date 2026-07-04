@@ -1,5 +1,7 @@
 # rca-generator
 
+![CI](https://github.com/somasundarv/rca-generator/actions/workflows/ci.yml/badge.svg)
+
 Turns scattered incident artifacts — alert history, the Slack thread, raw
 log lines, a metrics summary — into one structured, blameless postmortem.
 Built on the recurring SRE problem: by the time you sit down to write the

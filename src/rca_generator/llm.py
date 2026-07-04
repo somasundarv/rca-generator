@@ -39,7 +39,7 @@ class TemplateClient:
 class AnthropicClient:
     """Real LLM-backed client. Requires the 'anthropic' extra: pip install -e .[anthropic]"""
 
-    def __init__(self, model: str = "claude-sonnet-4-6", api_key: str | None = None):
+    def __init__(self, model: str = "claude-sonnet-5", api_key: str | None = None):
         import anthropic  # imported lazily so the SDK isn't required in offline mode
 
         self._client = anthropic.Anthropic(api_key=api_key)
@@ -48,7 +48,7 @@ class AnthropicClient:
     def complete(self, system: str, prompt: str) -> str:
         response = self._client.messages.create(
             model=self._model,
-            max_tokens=2048,
+            max_tokens=4096,
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
