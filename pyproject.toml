@@ -1,7 +1,7 @@
 [project]
 name = "rca-generator"
 version = "0.1.0"
-description = "Generate a structured incident postmortem (RCA) from alerts, a Slack thread export, logs, and a metrics summary."
+description = "Agentic RCA generator: staged LLM pipeline over pluggable evidence connectors, with gap detection, token ledger, and a human review gate."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

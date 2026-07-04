@@ -1,38 +1,51 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 
+@dataclass
+class Completion:
+    text: str
+    input_tokens: int
+    output_tokens: int
+
+
 class LLMClient(Protocol):
-    def complete(self, system: str, prompt: str) -> str: ...
+    def complete(self, stage: str, system: str, prompt: str) -> Completion: ...
+
+
+def estimate_tokens(text: str) -> int:
+    """Rough offline estimate (~4 chars/token) so the ledger works without an API."""
+    return max(len(text) // 4, 1)
+
+
+_OFFLINE_NOTE = "_(offline template output — set ANTHROPIC_API_KEY for a generated draft)_"
+
+_TEMPLATES = {
+    "problem_statement": "What broke, where, and the blast radius: not determined in offline mode.",
+    "timeline": "See the merged event timeline above. Phase narration requires an LLM.",
+    "root_cause": "Root cause and contributing factors: not determined in offline mode.",
+    "action_items": "| Action | Owner | SLA |\n|---|---|---|\n| Re-run with an API key configured | - | - |",
+    "executive_summary": "Executive summary: not generated in offline mode.",
+}
 
 
 class TemplateClient:
     """Offline fallback used when no ANTHROPIC_API_KEY is configured.
 
-    Returns a deterministic skeleton so the CLI, tests, and CI all work with
-    zero network calls and zero API cost. Swap in AnthropicClient for a real
-    narrative RCA.
+    Returns a deterministic per-stage skeleton so the CLI, tests, and CI all
+    exercise the full multi-stage pipeline with zero network calls and zero
+    API cost. Swap in AnthropicClient for a real narrative RCA.
     """
 
-    def complete(self, system: str, prompt: str) -> str:
-        return (
-            "## Summary\n"
-            "_(offline template output — set ANTHROPIC_API_KEY to generate a real narrative)_\n\n"
-            "## Timeline\n"
-            "See merged timeline above.\n\n"
-            "## Impact\n"
-            "Not determined (offline mode).\n\n"
-            "## Root Cause\n"
-            "Not determined (offline mode).\n\n"
-            "## Contributing Factors\n"
-            "Not determined (offline mode).\n\n"
-            "## Resolution\n"
-            "Not determined (offline mode).\n\n"
-            "## Action Items\n"
-            "- Re-run with an Anthropic API key configured for a generated analysis.\n\n"
-            "## Lessons Learned\n"
-            "Not determined (offline mode).\n"
+    def complete(self, stage: str, system: str, prompt: str) -> Completion:
+        body = _TEMPLATES.get(stage, "Not determined (offline mode).")
+        text = f"{_OFFLINE_NOTE}\n\n{body}"
+        return Completion(
+            text=text,
+            input_tokens=estimate_tokens(system) + estimate_tokens(prompt),
+            output_tokens=estimate_tokens(text),
         )
 
 
@@ -45,11 +58,16 @@ class AnthropicClient:
         self._client = anthropic.Anthropic(api_key=api_key)
         self._model = model
 
-    def complete(self, system: str, prompt: str) -> str:
+    def complete(self, stage: str, system: str, prompt: str) -> Completion:
         response = self._client.messages.create(
             model=self._model,
             max_tokens=4096,
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
-        return "".join(block.text for block in response.content if block.type == "text")
+        text = "".join(block.text for block in response.content if block.type == "text")
+        return Completion(
+            text=text,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
