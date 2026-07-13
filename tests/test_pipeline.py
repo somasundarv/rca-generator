@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from rca_generator.connectors import Evidence, fetch_all
-from rca_generator.llm import Completion, TemplateClient
+from rca_generator.llm import Completion, TemplateClient, ToolExecutor
 from rca_generator.pipeline import run_pipeline
 from rca_generator.report import render_draft
 from rca_generator.stages import STAGES
@@ -10,12 +10,25 @@ EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
 
 class RecordingClient:
-    def __init__(self):
-        self.calls = []
+    """Fake agent: exercises the real tool executor, records prompts + tool names."""
 
-    def complete(self, stage: str, system: str, prompt: str) -> Completion:
-        self.calls.append((stage, system, prompt))
-        return Completion(text=f"generated {stage}", input_tokens=100, output_tokens=10)
+    def __init__(self):
+        self.calls = []  # (stage, system, prompt, tool_names)
+
+    def run_agent(
+        self,
+        stage: str,
+        system: str,
+        prompt: str,
+        tools: list[dict],
+        execute: ToolExecutor,
+        max_turns: int = 6,
+    ) -> Completion:
+        tool_names = [t["name"] for t in tools]
+        for name in tool_names:  # drive the toolbox so the trace + gaps populate
+            execute(name, {})
+        self.calls.append((stage, system, prompt, tool_names))
+        return Completion(text=f"generated {stage}", input_tokens=100, output_tokens=10, turns=1)
 
 
 def test_pipeline_runs_all_stages_in_order_with_prior_context():
@@ -24,18 +37,32 @@ def test_pipeline_runs_all_stages_in_order_with_prior_context():
 
     run = run_pipeline("incident-001", evidence, client)
 
-    assert [name for name, _, _ in client.calls] == [s.name for s in STAGES]
+    assert [name for name, _, _, _ in client.calls] == [s.name for s in STAGES]
     # each stage after the first sees the sections drafted so far
-    _, _, root_cause_prompt = client.calls[2]
+    _, _, root_cause_prompt, _ = client.calls[2]
     assert "generated problem_statement" in root_cause_prompt
     assert "generated timeline" in root_cause_prompt
     # final stage synthesizes from all four prior sections
-    _, _, summary_prompt = client.calls[4]
+    _, _, summary_prompt, _ = client.calls[4]
     assert "generated action_items" in summary_prompt
     # full evidence bundle -> no structural gaps
     assert run.gaps == []
     assert len(run.ledger.entries) == len(STAGES)
     assert run.ledger.total_input == 100 * len(STAGES)
+
+
+def test_stages_call_their_declared_fetch_tools():
+    evidence = fetch_all(EXAMPLES / "incident-001")
+    run = run_pipeline("incident-001", evidence, RecordingClient())
+
+    assert run.section("problem_statement").tools_called == ["fetch_slack"]
+    assert run.section("root_cause").tools_called == ["fetch_monitoring", "fetch_logs"]
+    # executive summary declares no tools
+    assert run.section("executive_summary").tools_called == []
+    # the trace surfaces in the draft appendix
+    draft = render_draft(run)
+    assert "## Appendix: Agent Trace" in draft
+    assert "fetch_monitoring, fetch_logs" in draft
 
 
 def test_missing_evidence_is_flagged_never_fabricated(tmp_path):
@@ -75,6 +102,7 @@ def test_draft_follows_output_contract_offline():
         "## Action Items",
         "## Data Gaps",
         "## Appendix: Token Usage",
+        "## Appendix: Agent Trace",
     ]
     positions = [draft.index(h) for h in expected_order]
     assert positions == sorted(positions)
@@ -83,11 +111,11 @@ def test_draft_follows_output_contract_offline():
     assert draft.index("09:06:12") < draft.index("09:31:00")
 
 
-def test_stage_requirements_reference_real_connectors():
+def test_stage_tools_reference_real_connectors():
     evidence = fetch_all(EXAMPLES / "incident-001")
     for stage in STAGES:
-        for name in stage.requires:
-            assert name in evidence, f"{stage.name} requires unknown connector {name}"
+        for name in stage.tools:
+            assert name in evidence, f"{stage.name} declares unknown connector {name}"
 
 
 def test_evidence_dataclass_defaults():

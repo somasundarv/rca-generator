@@ -25,7 +25,7 @@ flowchart TD
     B --> C3["Connector: monitoring<br/>alerts + metrics"]
     B --> C4["Connector: logs<br/>timestamped lines"]
     C1 & C2 & C3 & C4 --> D["Evidence bundle<br/>+ merged event timeline"]
-    D --> E["Multi-step LLM reasoning<br/>problem → timeline → root cause<br/>→ actions → exec summary"]
+    D --> E["Per-stage agent loops<br/>each fetches evidence via tools,<br/>then writes: problem → timeline<br/>→ root cause → actions → summary"]
     E --> F["Structured RCA draft<br/>+ gap flags + token ledger"]
     F --> G{"Human review gate"}
     G -->|approve| H["Published record<br/><i>(production: Confluence review → Google Drive)</i>"]
@@ -46,18 +46,24 @@ same pipeline with file-backed stand-ins so everything runs offline:
 
 ## Design decisions
 
-- **Pluggable connectors (MCP in production)** — the orchestrator only sees
-  the `Connector` protocol. Adding Grafana or Sumo Logic is a new registry
-  entry, not a rewrite. Loose coupling is the point.
-- **Multi-step reasoning, not single-shot** — five scoped stages
-  (`stages.py`), each a separate LLM call that receives the evidence plus
-  prior sections. Smaller prompts hallucinate less, and each section is
-  independently verifiable in review — when one section is wrong, you debug
-  one stage, not one mega-prompt.
-- **Gap detection over fabrication** — a stage whose required evidence is
-  missing gets a structural `[GAP: …]` flag (pipeline-enforced, not
-  prompt-hoped), and the prompts additionally instruct the model to flag thin
-  evidence instead of inventing. Engineers see exactly what to chase.
+- **Pluggable connectors, exposed as tools (MCP in production)** — the
+  orchestrator only sees the `Connector` protocol, and each connector is
+  surfaced to the model as a `fetch_<source>` tool (`tools.py`). Adding Grafana
+  or Sumo Logic is a new registry entry, not a rewrite. Loose coupling is the
+  point.
+- **Agentic, not single-shot** — five scoped stages (`stages.py`), each a
+  tool-use agent loop (`llm.py`): the stage calls the fetch tools it declared,
+  observes the evidence, and only then writes its section, receiving the merged
+  timeline plus prior sections. The model pulls evidence on demand rather than
+  having every source pre-stuffed into one mega-prompt. Smaller, tool-grounded
+  prompts hallucinate less, and each section is independently verifiable — when
+  one is wrong, you debug one stage. The tools each stage called and the turns
+  it took are recorded in the draft's Agent Trace appendix.
+- **Gap detection over fabrication** — a stage whose declared evidence is
+  missing gets a structural `[GAP: …]` flag (orchestrator-enforced regardless
+  of what the agent chose to fetch, not prompt-hoped), and a fetch tool that
+  hits an absent source returns a `[GAP: …]` observation instead of data.
+  Engineers see exactly what to chase.
 - **Human review gate** — `generate` only ever writes a DRAFT.
   `publish --approved-by <name>` promotes it, and refuses while unresolved
   `[GAP:]` flags remain unless explicitly acknowledged. Bad RCAs stay out of
@@ -82,7 +88,7 @@ rca-generator publish drafts/incident-001-rca.md --approved-by priya
 ```
 Draft written to drafts/incident-001-rca.md
 Evidence fetched: slack, jira, monitoring, logs
-Gaps flagged: 0 | tokens: 3494 in / 177 out
+Gaps flagged: 0 | tokens: 4211 in / 177 out
 ```
 
 Point it at a directory containing only the Slack thread and the same run
@@ -90,14 +96,15 @@ flags what's missing instead of guessing:
 
 ```
 Evidence fetched: slack
-Gaps flagged: 4 | tokens: 1969 in / 177 out
+Gaps flagged: 4 | tokens: 2934 in / 177 out
 Review the Data Gaps section before publishing.
 ```
 
-With `ANTHROPIC_API_KEY` set, stages run against the Anthropic API
-(`--model`, default `claude-sonnet-5`); without it, a deterministic template
-client exercises the identical pipeline offline — same stages, same gap
-flags, same ledger — which is what CI runs.
+With `ANTHROPIC_API_KEY` set, each stage runs as a real tool-use loop against
+the Anthropic API (`--model`, default `claude-sonnet-5`); without it, a
+deterministic template client fakes the agent — it still calls every declared
+tool through the real executor, so CI exercises the identical pipeline offline
+(same stages, same tool plumbing, same gap flags, same ledger and trace).
 
 ## Input formats
 
