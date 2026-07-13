@@ -1,8 +1,11 @@
-"""Orchestrator: runs the staged RCA pipeline over the evidence bundle.
+"""Orchestrator: runs the staged, tool-using RCA pipeline over the evidence.
 
-Mirrors the production flow (slash command -> orchestrator -> MCP fetches ->
-multi-step reasoning -> draft for human review) with file-backed connectors
-standing in for the MCP servers.
+Mirrors the production flow (slash command -> orchestrator -> agent fetches
+evidence via MCP tools -> multi-step reasoning -> draft for human review). Each
+stage is an agent loop: the model calls the fetch tools it declared, observes
+the results, and writes its section. File-backed connectors stand in for the
+MCP servers, and the orchestrator still guarantees that a missing source is
+flagged as a [GAP] rather than fabricated.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from .llm import LLMClient
 from .stages import STAGES, Stage
 from .timeline import TimelineEvent, merge_timeline, render_timeline
 from .tokens import TokenLedger
+from .tools import ToolBox
 
 
 @dataclass
@@ -21,6 +25,8 @@ class StageResult:
     stage: Stage
     text: str
     gaps: list[str] = field(default_factory=list)
+    tools_called: list[str] = field(default_factory=list)
+    turns: int = 1
 
 
 @dataclass
@@ -39,26 +45,34 @@ class RunResult:
 
 
 def _structural_gaps(stage: Stage, evidence: dict[str, Evidence]) -> list[str]:
-    """Missing evidence becomes an explicit flag, never a fabricated section."""
+    """Missing evidence becomes an explicit flag, never a fabricated section.
+
+    Enforced by the orchestrator regardless of what the agent chose to fetch, so
+    the guarantee holds even if the model skips a tool.
+    """
     return [
         f"[GAP: no {name} data available — '{stage.title}' is based on partial evidence; "
         f"chase the {name} source before publishing]"
-        for name in stage.requires
+        for name in stage.tools
         if not evidence[name].available
     ]
 
 
 def _build_prompt(
     incident: str,
-    evidence: dict[str, Evidence],
     events: list[TimelineEvent],
     prior: list[StageResult],
     gaps: list[str],
 ) -> str:
-    parts = [f"# Incident: {incident}", "", "## Merged event timeline", render_timeline(events)]
-    for ev in evidence.values():
-        if ev.available and ev.context:
-            parts += ["", f"## Evidence: {ev.source}", ev.context]
+    parts = [
+        f"# Incident: {incident}",
+        "",
+        "## Merged event timeline",
+        render_timeline(events),
+        "",
+        "Use your fetch tools to pull the underlying evidence (participants, "
+        "ticket assignees, metric summaries, log detail) before writing.",
+    ]
     if gaps:
         parts += ["", "## Known evidence gaps", *gaps]
     if prior:
@@ -71,13 +85,27 @@ def _build_prompt(
 def run_pipeline(incident: str, evidence: dict[str, Evidence], client: LLMClient) -> RunResult:
     events = merge_timeline(*[ev.events for ev in evidence.values()])
     ledger = TokenLedger()
+    toolbox = ToolBox(evidence)
     results: list[StageResult] = []
 
     for stage in STAGES:
         gaps = _structural_gaps(stage, evidence)
-        prompt = _build_prompt(incident, evidence, events, results, gaps)
-        completion = client.complete(stage.name, stage.system, prompt)
+        prompt = _build_prompt(incident, events, results, gaps)
+        tools = toolbox.specs(stage.tools)
+
+        trace_start = len(toolbox.calls)
+        completion = client.run_agent(stage.name, stage.system, prompt, tools, toolbox.execute)
+        called = [c.name for c in toolbox.calls[trace_start:]]
+
         ledger.record(stage.name, completion.input_tokens, completion.output_tokens)
-        results.append(StageResult(stage=stage, text=completion.text, gaps=gaps))
+        results.append(
+            StageResult(
+                stage=stage,
+                text=completion.text,
+                gaps=gaps,
+                tools_called=called,
+                turns=completion.turns,
+            )
+        )
 
     return RunResult(incident=incident, results=results, ledger=ledger, events=events)

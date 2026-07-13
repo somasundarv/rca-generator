@@ -32,6 +32,18 @@ def render_draft(run: RunResult) -> str:
     else:
         parts.append("- None detected: all evidence sources were available.")
 
+    parts += ["", "## Appendix: Token Usage", "", run.ledger.render()]
+    parts += ["", "## Appendix: Agent Trace", "", _render_trace(run)]
+
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    parts += ["", "## Appendix: Token Usage", "", run.ledger.render(), "", f"_Generated {generated}._"]
+    parts += ["", f"_Generated {generated}._"]
     return "\n".join(parts)
+
+
+def _render_trace(run: RunResult) -> str:
+    """Per-stage record of which fetch tools the agent called and turns taken."""
+    lines = ["| Stage | Turns | Tools called |", "|---|---|---|"]
+    for result in run.results:
+        tools = ", ".join(result.tools_called) if result.tools_called else "—"
+        lines.append(f"| {result.stage.name} | {result.turns} | {tools} |")
+    return "\n".join(lines)
