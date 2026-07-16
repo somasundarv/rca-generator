@@ -70,6 +70,20 @@ STAGES: tuple[Stage, ...] = (
         "assignees; use existing ticket keys where they cover an action.",
     ),
     Stage(
+        name="runbook_updates",
+        title="Runbook Updates",
+        tools=("runbooks", "monitoring"),
+        system=_BLAMELESS
+        + "Task: propose concrete runbook edits so the next on-call handles "
+        "this failure faster. Fetch the existing runbooks; for each affected "
+        "runbook, reference it by its exact filename (e.g. checkout-service.md) "
+        "and propose specific additions — detection signals, diagnosis steps, "
+        "mitigation commands — derived from what actually worked in this "
+        "incident. If no runbook covers the affected service, propose a new "
+        "runbook skeleton with a suggested filename. Do not restate the RCA; "
+        "write only actionable runbook content.",
+    ),
+    Stage(
         name="executive_summary",
         title="Executive Summary",
         tools=(),

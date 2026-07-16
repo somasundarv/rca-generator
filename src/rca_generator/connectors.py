@@ -125,11 +125,29 @@ def _load_logs(incident_dir: Path) -> Evidence:
     return Evidence(source="logs", available=bool(events), events=events)
 
 
+def _load_runbooks(incident_dir: Path) -> Evidence:
+    """Read runbooks/*.md — the demo stand-in for the team's runbook repo/wiki.
+
+    Runbooks are pure context (no timeline events): the runbook_updates stage
+    reads them to propose concrete post-incident edits, referenced by filename
+    so `publish --update-runbooks` can apply the approved learnings.
+    """
+    runbook_dir = incident_dir / "runbooks"
+    if not runbook_dir.is_dir():
+        return Evidence(source="runbooks", available=False)
+    sections = [
+        f"### {path.name}\n{path.read_text().strip()}"
+        for path in sorted(runbook_dir.glob("*.md"))
+    ]
+    return Evidence(source="runbooks", available=bool(sections), context="\n\n".join(sections))
+
+
 REGISTRY: tuple[Connector, ...] = (
     Connector("slack", _load_slack),
     Connector("jira", _load_jira),
     Connector("monitoring", _load_monitoring),
     Connector("logs", _load_logs),
+    Connector("runbooks", _load_runbooks),
 )
 
 

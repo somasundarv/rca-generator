@@ -7,8 +7,10 @@ engineers a day or two: scanning the Slack incident channel, chasing teams for
 ticket references and monitoring data, and hand-assembling it all into the
 standard format. This collapses that to minutes — a staged LLM pipeline pulls
 the incident's existing artifacts through pluggable connectors, reasons over
-them in five verifiable steps, and produces a fully structured RCA draft that
-a human reviews before it becomes the record.
+them in six verifiable steps, and produces a fully structured RCA draft that a
+human reviews before it becomes the record — including proposed runbook edits
+that, once approved, are applied back to the runbooks so the next on-call
+benefits from the incident.
 
 Built spec-first: [SPEC.md](SPEC.md) pins down the problem statement, goals,
 workflow stages, and data requirements the pipeline implements. Behavior not
@@ -24,11 +26,14 @@ flowchart TD
     B --> C2["Connector: jira<br/>related tickets"]
     B --> C3["Connector: monitoring<br/>alerts + metrics"]
     B --> C4["Connector: logs<br/>timestamped lines"]
-    C1 & C2 & C3 & C4 --> D["Evidence bundle<br/>+ merged event timeline"]
-    D --> E["Per-stage agent loops<br/>each fetches evidence via tools,<br/>then writes: problem → timeline<br/>→ root cause → actions → summary"]
+    B --> C5["Connector: runbooks<br/>per-service runbooks"]
+    C1 & C2 & C3 & C4 & C5 --> D["Evidence bundle<br/>+ merged event timeline"]
+    D --> E["Per-stage agent loops<br/>each fetches evidence via tools,<br/>then writes: problem → timeline →<br/>root cause → actions → runbook edits → summary"]
     E --> F["Structured RCA draft<br/>+ gap flags + token ledger"]
     F --> G{"Human review gate"}
     G -->|approve| H["Published record<br/><i>(production: Confluence review → Google Drive)</i>"]
+    G -->|"approve + --update-runbooks"| I["Runbooks updated<br/>dated learnings block appended"]
+    I -.->|next incident reads<br/>smarter runbooks| C5
 ```
 
 Production deploys this as a Slack bot: the slash command invokes the
@@ -51,7 +56,7 @@ same pipeline with file-backed stand-ins so everything runs offline:
   surfaced to the model as a `fetch_<source>` tool (`tools.py`). Adding Grafana
   or Sumo Logic is a new registry entry, not a rewrite. Loose coupling is the
   point.
-- **Agentic, not single-shot** — five scoped stages (`stages.py`), each a
+- **Agentic, not single-shot** — six scoped stages (`stages.py`), each a
   tool-use agent loop (`llm.py`): the stage calls the fetch tools it declared,
   observes the evidence, and only then writes its section, receiving the merged
   timeline plus prior sections. The model pulls evidence on demand rather than
@@ -70,6 +75,13 @@ same pipeline with file-backed stand-ins so everything runs offline:
   the record.
 - **Token ledger** — every stage's input/output tokens are recorded per run
   and reported in the draft's appendix. Cost awareness from day one.
+- **Runbooks learn from every incident** — the runbook_updates stage reads the
+  existing runbooks and proposes concrete edits (detection signals, diagnosis
+  steps, the mitigation that actually worked), referencing each runbook by
+  filename. `publish --update-runbooks <dir>` applies the approved section to
+  each referenced runbook as a dated learnings block — after human review,
+  never at draft time (`runbooks.py`). The RCA improves the docs the next
+  on-call will actually use.
 
 ## Usage
 
@@ -79,16 +91,18 @@ pip install -e .
 # 1. Draft (offline template mode; set ANTHROPIC_API_KEY for a real narrative)
 rca-generator generate --incident-dir examples/incident-001
 
-# 2. Review drafts/incident-001-rca.md, resolve gaps, then publish
-rca-generator publish drafts/incident-001-rca.md --approved-by priya
+# 2. Review drafts/incident-001-rca.md, resolve gaps, then publish —
+#    optionally applying the approved runbook edits back to the runbooks
+rca-generator publish drafts/incident-001-rca.md --approved-by priya \
+  --update-runbooks examples/incident-001/runbooks
 ```
 
 `generate` prints a run summary:
 
 ```
 Draft written to drafts/incident-001-rca.md
-Evidence fetched: slack, jira, monitoring, logs
-Gaps flagged: 0 | tokens: 4211 in / 177 out
+Evidence fetched: slack, jira, monitoring, logs, runbooks
+Gaps flagged: 0 | tokens: 5337 in / 209 out
 ```
 
 Point it at a directory containing only the Slack thread and the same run
@@ -96,7 +110,7 @@ flags what's missing instead of guessing:
 
 ```
 Evidence fetched: slack
-Gaps flagged: 4 | tokens: 2934 in / 177 out
+Gaps flagged: 6 | tokens: 3713 in / 209 out
 Review the Data Gaps section before publishing.
 ```
 
@@ -110,8 +124,8 @@ tool through the real executor, so CI exercises the identical pipeline offline
 
 An incident directory holds whatever artifacts exist (all optional — missing
 ones become gap flags): `slack_thread.json`, `tickets.yaml`, `alerts.yaml`,
-`metrics_summary.yaml`, `logs.txt`. See `examples/incident-001/` for the
-shapes.
+`metrics_summary.yaml`, `logs.txt`, and a `runbooks/` directory of per-service
+markdown runbooks. See `examples/incident-001/` for the shapes.
 
 ## Limitations
 

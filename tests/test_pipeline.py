@@ -57,6 +57,7 @@ def test_stages_call_their_declared_fetch_tools():
 
     assert run.section("problem_statement").tools_called == ["fetch_slack"]
     assert run.section("root_cause").tools_called == ["fetch_monitoring", "fetch_logs"]
+    assert run.section("runbook_updates").tools_called == ["fetch_runbooks", "fetch_monitoring"]
     # executive summary declares no tools
     assert run.section("executive_summary").tools_called == []
     # the trace surfaces in the draft appendix
@@ -84,10 +85,11 @@ def test_missing_evidence_is_flagged_never_fabricated(tmp_path):
 def test_connectors_registry_reads_example_bundle():
     evidence = fetch_all(EXAMPLES / "incident-001")
 
-    assert set(evidence) == {"slack", "jira", "monitoring", "logs"}
+    assert set(evidence) == {"slack", "jira", "monitoring", "logs", "runbooks"}
     assert all(ev.available for ev in evidence.values())
     assert any("OPS-4312" in e.text for e in evidence["jira"].events)
     assert "error_rate_peak" in evidence["monitoring"].context
+    assert "checkout-service.md" in evidence["runbooks"].context
 
 
 def test_draft_follows_output_contract_offline():
@@ -100,6 +102,7 @@ def test_draft_follows_output_contract_offline():
         "## Timeline",
         "## Root Cause",
         "## Action Items",
+        "## Runbook Updates",
         "## Data Gaps",
         "## Appendix: Token Usage",
         "## Appendix: Agent Trace",
