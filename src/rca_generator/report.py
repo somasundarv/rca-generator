@@ -11,7 +11,14 @@ DRAFT_BANNER = (
 )
 
 # Section order is the output contract from SPEC.md — identical every run.
-_SECTION_ORDER = ("executive_summary", "problem_statement", "timeline", "root_cause", "action_items")
+_SECTION_ORDER = (
+    "executive_summary",
+    "problem_statement",
+    "timeline",
+    "root_cause",
+    "action_items",
+    "runbook_updates",
+)
 
 
 def render_draft(run: RunResult) -> str:

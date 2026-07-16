@@ -10,6 +10,7 @@ from .connectors import fetch_all
 from .llm import AnthropicClient, TemplateClient
 from .pipeline import run_pipeline
 from .report import DRAFT_BANNER, render_draft
+from .runbooks import apply_updates
 
 
 @click.group()
@@ -79,7 +80,17 @@ def generate(incident_dir: str, incident_name: str | None, drafts_dir: str, mode
     show_default=True,
     help="Where the approved RCA is written.",
 )
-def publish(draft_path: str, approved_by: str, ack_gaps: bool, published_dir: str) -> None:
+@click.option(
+    "--update-runbooks",
+    "runbooks_dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Runbook directory: append the draft's approved Runbook Updates section "
+    "to each runbook it references by filename.",
+)
+def publish(
+    draft_path: str, approved_by: str, ack_gaps: bool, published_dir: str, runbooks_dir: str | None
+) -> None:
     """Promote a reviewed draft to the published record (the human review gate)."""
     text = Path(draft_path).read_text()
 
@@ -98,6 +109,16 @@ def publish(draft_path: str, approved_by: str, ack_gaps: bool, published_dir: st
     out_path = out_dir / Path(draft_path).name
     out_path.write_text(text)
     click.echo(f"Published to {out_path} (approved by {approved_by})")
+
+    if runbooks_dir:
+        incident = Path(draft_path).stem.removesuffix("-rca")
+        updated, missing = apply_updates(text, runbooks_dir, incident, approved_by)
+        for path in updated:
+            click.echo(f"Runbook updated: {path}")
+        for name in missing:
+            click.echo(f"Runbook referenced but not found (create it by hand): {name}")
+        if not updated and not missing:
+            click.echo("No runbook filenames referenced in the Runbook Updates section; nothing applied.")
 
 
 if __name__ == "__main__":

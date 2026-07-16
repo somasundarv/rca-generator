@@ -39,6 +39,7 @@ _TEMPLATES = {
     "timeline": "See the merged event timeline above. Phase narration requires an LLM.",
     "root_cause": "Root cause and contributing factors: not determined in offline mode.",
     "action_items": "| Action | Owner | SLA |\n|---|---|---|\n| Re-run with an API key configured | - | - |",
+    "runbook_updates": "Proposed runbook edits: not determined in offline mode.",
     "executive_summary": "Executive summary: not generated in offline mode.",
 }
 

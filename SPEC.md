@@ -38,13 +38,14 @@ pull the evidence it needs, observes the results, and only then writes its
 section — receiving the merged event timeline plus the outputs of prior stages.
 Each section is independently verifiable in review.
 
-| # | Stage              | Task                                                        | Prior deps | Fetch tools        |
-|---|--------------------|-------------------------------------------------------------|------------|--------------------|
-| 1 | problem_statement  | Extract what broke, where, and the blast radius             | —          | slack              |
-| 2 | timeline           | Narrate the incident phases over the merged event timeline  | 1          | slack, monitoring  |
-| 3 | root_cause         | Identify root cause + contributing factors                  | 1, 2       | monitoring, logs   |
-| 4 | action_items       | Compile action items with owner and SLA                     | 1–3        | slack, jira        |
-| 5 | executive_summary  | Two-paragraph summary for leadership                        | 1–4        | — (synthesis only) |
+| # | Stage              | Task                                                        | Prior deps | Fetch tools          |
+|---|--------------------|-------------------------------------------------------------|------------|----------------------|
+| 1 | problem_statement  | Extract what broke, where, and the blast radius             | —          | slack                |
+| 2 | timeline           | Narrate the incident phases over the merged event timeline  | 1          | slack, monitoring    |
+| 3 | root_cause         | Identify root cause + contributing factors                  | 1, 2       | monitoring, logs     |
+| 4 | action_items       | Compile action items with owner and SLA                     | 1–3        | slack, jira          |
+| 5 | runbook_updates    | Propose concrete runbook edits from what worked, referencing each runbook by filename | 1–4 | runbooks, monitoring |
+| 6 | executive_summary  | Two-paragraph summary for leadership                        | 1–5        | — (synthesis only)   |
 
 Single-shot generation mixes concerns and hallucinates more; staged, tool-grounded
 generation keeps each section small, scoped, evidence-backed, and debuggable when
@@ -65,6 +66,7 @@ file-backed connectors so everything runs offline.)
 | jira       | `tickets.yaml`         | Related tickets, assignees, status    | 4                |
 | monitoring | `alerts.yaml` + `metrics_summary.yaml` | Alert firings + metric context | 2, 3    |
 | logs       | `logs.txt`             | Timestamped log lines                 | 3                |
+| runbooks   | `runbooks/*.md`        | Existing per-service runbooks (alerts, failure modes, escalation) | 5 |
 
 Two-layer gap handling: a `fetch_<source>` tool that hits an absent source
 returns a `[GAP: …]` observation instead of data, and the orchestrator
@@ -75,10 +77,22 @@ never a fabricated section.
 ## Output contract
 
 One markdown document with exactly these sections, in this order: Executive
-Summary, Problem Statement, Timeline, Root Cause, Action Items, Data Gaps,
-Appendix: Token Usage, Appendix: Agent Trace. The document is written to
-`drafts/` with a DRAFT banner; `rca-generator publish` moves it to `published/`
-only after a named reviewer approves (and acknowledges any unresolved gaps).
+Summary, Problem Statement, Timeline, Root Cause, Action Items, Runbook
+Updates, Data Gaps, Appendix: Token Usage, Appendix: Agent Trace. The document
+is written to `drafts/` with a DRAFT banner; `rca-generator publish` moves it
+to `published/` only after a named reviewer approves (and acknowledges any
+unresolved gaps).
+
+## Runbook feedback loop
+
+The RCA does not just record the incident — it teaches the runbooks. The
+runbook_updates stage proposes concrete edits (detection signals, diagnosis
+steps, mitigation commands that actually worked), referencing each affected
+runbook by exact filename, or proposing a new runbook skeleton when none
+covers the affected service. `publish --update-runbooks <dir>` — behind the
+human review gate, never at draft time — appends the approved section to each
+referenced runbook as a dated `## Learnings from <incident>` block, and lists
+referenced-but-missing runbooks for manual creation.
 
 ## Quality gates
 

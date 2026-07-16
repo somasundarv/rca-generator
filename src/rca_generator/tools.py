@@ -32,6 +32,9 @@ _TOOL_DESCRIPTIONS = {
     "summary (error rates, latency, saturation) around the incident window.",
     "logs": "Fetch application/system log lines with timestamps for the "
     "affected service during the incident.",
+    "runbooks": "Fetch the team's existing runbooks (markdown, one file per "
+    "service): alert meanings, first-response steps, known failure modes, and "
+    "escalation paths.",
 }
 
 
