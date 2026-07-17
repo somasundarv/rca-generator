@@ -119,6 +119,9 @@ the Anthropic API (`--model`, default `claude-sonnet-5`); without it, a
 deterministic template client fakes the agent — it still calls every declared
 tool through the real executor, so CI exercises the identical pipeline offline
 (same stages, same tool plumbing, same gap flags, same ledger and trace).
+One offline caveat: the template's Runbook Updates section references no
+runbook filenames, so `publish --update-runbooks` reports "nothing applied" —
+expected; LLM-drafted RCAs reference runbooks by filename and do get applied.
 
 ## Input formats
 
